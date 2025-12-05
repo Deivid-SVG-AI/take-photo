@@ -163,6 +163,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     
     switch (event_id)
     {
+        case MQTT_EVENT_BEFORE_CONNECT:
+            ESP_LOGI(TAG, "MQTT: Intentando conectar al broker...");
+            break;
+            
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "✓ MQTT conectado exitosamente al broker");
             mqtt_connected = true;
@@ -193,19 +197,51 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             break;
             
         case MQTT_EVENT_DISCONNECTED:
-            ESP_LOGW(TAG, "MQTT desconectado");
+            ESP_LOGW(TAG, "✗ MQTT desconectado del broker");
             mqtt_connected = false;
+            break;
+            
+        case MQTT_EVENT_ERROR:
+            ESP_LOGE(TAG, "✗✗✗ ERROR EN MQTT ✗✗✗");
+            if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT)
+            {
+                ESP_LOGE(TAG, "Error de transporte TCP");
+                ESP_LOGE(TAG, "Código errno: %d", event->error_handle->esp_transport_sock_errno);
+                
+                // Decodificar errores comunes
+                switch (event->error_handle->esp_transport_sock_errno)
+                {
+                    case 113: // EHOSTUNREACH
+                        ESP_LOGE(TAG, "▶ CAUSA: Host inalcanzable (EHOSTUNREACH)");
+                        ESP_LOGE(TAG, "▶ SOLUCIÓN 1: Verifica que el broker esté corriendo en %s", MQTT_BROKER);
+                        ESP_LOGE(TAG, "▶ SOLUCIÓN 2: Verifica que ambos dispositivos estén en la misma red");
+                        ESP_LOGE(TAG, "▶ SOLUCIÓN 3: Verifica que no haya firewall bloqueando puerto 1883");
+                        break;
+                    case 111: // ECONNREFUSED
+                        ESP_LOGE(TAG, "▶ CAUSA: Conexión rechazada (ECONNREFUSED)");
+                        ESP_LOGE(TAG, "▶ SOLUCIÓN: El broker no está escuchando en el puerto 1883");
+                        break;
+                    case 110: // ETIMEDOUT
+                        ESP_LOGE(TAG, "▶ CAUSA: Timeout de conexión");
+                        ESP_LOGE(TAG, "▶ SOLUCIÓN: Verifica la IP del broker y conectividad de red");
+                        break;
+                    default:
+                        ESP_LOGE(TAG, "▶ Error desconocido: %d", event->error_handle->esp_transport_sock_errno);
+                        break;
+                }
+            }
+            else if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED)
+            {
+                ESP_LOGE(TAG, "Conexión MQTT rechazada por el broker");
+            }
             break;
             
         case MQTT_EVENT_PUBLISHED:
             ESP_LOGI(TAG, "✓ Foto enviada exitosamente por MQTT");
             break;
-            
-        case MQTT_EVENT_ERROR:
-            ESP_LOGE(TAG, "Error en MQTT");
-            break;
-            
+        
         default:
+            ESP_LOGD(TAG, "MQTT evento: %d", event_id);
             break;
     }
 }
